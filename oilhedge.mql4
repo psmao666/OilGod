@@ -1,0 +1,1336 @@
+//+------------------------------------------------------------------+
+//|                                         Crude oil hedging EA.mq4 |
+//|                        Copyright 2019, MetaQuotes Software Corp. |
+//|                                             https://www.mql5.com |
+//+------------------------------------------------------------------+
+#property copyright "Copyright 2019, MetaQuotes Software Corp."
+#property link      "https://www.mql5.com"
+#property version   "1.00"
+#property strict
+#define   OP_ALL    -1
+#define   OBJPREFIX "TPLOIL-"
+
+input string USOIL="USOil";       //WTI Symbol
+input string UKOIL="UKOil";       //BRENT Symbol
+input double ilots=0.01;          //Lots
+input double profit=0;            //Profit
+input int    magic=21020900;      //magic
+enum bs
+  {
+    BUY =0, //BUY
+    SELL=1  //SELL
+  };
+input string text01="------------------";//------------Long1------------
+input double Long1=0;                    //Long Spread 1
+input bs     USBSx1=1;                   //WTI Type
+input bs     UKBSx1=0;                   //BRENT Type
+input string text02="------------------";//------------Long2------------
+input double Long2=0;                    //Long Spread 2
+input bs     USBSx2=1;                   //WTI Type
+input bs     UKBSx2=0;                   //BRENT Type
+input string text03="------------------";//------------Short1------------
+input double Short1=0;                   //Short Spread 1
+input bs     USBSd1=0;                   //WTI Type
+input bs     UKBSd1=1;                   //BRENT Type
+input string text04="------------------";//------------Short2------------
+input double Short2=0;                   //Short Spread 2
+input bs     USBSd2=0;                   //WTI Type
+input bs     UKBSd2=1;                   //BRENT Type
+input string text05="------------------";//------------Other------------
+input bool   hide=true;                  //Hide history price spread
+input int    stime=12;                   //Start Time
+input int    etime=9;                    //End Time
+int hd=100;
+bool itvlx1dd=false;
+bool itvlx2dd=false;
+bool itvld1dd=false;
+bool itvld2dd=false;
+bool ukbuyx1=false;
+bool ukselx1=false;
+bool ukbuyx2=false;
+bool ukselx2=false;
+bool usbuyx1=false;
+bool usselx1=false;
+bool usbuyx2=false;
+bool usselx2=false;
+bool ukbuyd1=false;
+bool ukseld1=false;
+bool ukbuyd2=false;
+bool ukseld2=false;
+bool usbuyd1=false;
+bool usseld1=false;
+bool usbuyd2=false;
+bool usseld2=false;
+
+bool closeall=false;
+int x=5;
+int y=25;
+int z=10;
+int w=10;
+int h=4;
+//--- right input parameters flag
+bool ExtParameters=false;
+string globalname;
+//+------------------------------------------------------------------+
+//| Expert initialization function                                   |
+//+------------------------------------------------------------------+
+int OnInit()
+  {
+   if(Long2>Long1 || Short2<Short1 || Short1<Long1)
+     {
+      MessageBox("Price spread parameters logic error，please reset","Warning",MB_OK|MB_ICONWARNING);
+      ExtParameters=false;
+      return(INIT_FAILED);
+     }
+   else
+     {
+      ExtParameters=true;
+     }
+     
+   if(symbolfind(UKOIL)==false)
+     {
+      MessageBox("Input Brent oil symbol name <"+UKOIL+"> not found from the general list.","Warning",MB_OK|MB_ICONWARNING);
+      ExtParameters=false;
+     }
+   else
+     {
+      ExtParameters=true;
+     }
+     
+   if(symbolfind(USOIL)==false)
+     {
+      MessageBox("Input WTI oil symbol name <"+USOIL+"> not found from the general list.","Warning",MB_OK|MB_ICONWARNING);
+      ExtParameters=false;
+     }
+   else
+     {
+      ExtParameters=true;
+     }
+
+//--- create timer
+   EventSetMillisecondTimer(500);
+   if(UninitializeReason()!=3)
+     {
+      objectscreateall();
+      Print("Profit : ",profit);
+     }
+//---
+   if(IsTesting()==true)
+     {
+      globalname=IntegerToString(AccountNumber())+USOIL+UKOIL+"TESL2C1";
+     }
+   else
+     {
+      globalname=IntegerToString(AccountNumber())+USOIL+UKOIL+"L2C1";
+     }
+
+//---
+   return(INIT_SUCCEEDED);
+  }
+//+------------------------------------------------------------------+
+//| Expert deinitialization function                                 |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+  {
+//--- destroy timer
+   EventKillTimer();
+   if(reason!=3)
+     {
+      ObjectsDeleteAll(0,OBJPREFIX,-1,-1);
+     }
+   if(IsTesting())
+     {
+      GlobalVariablesDeleteAll(globalname);
+     }
+  }
+//+------------------------------------------------------------------+
+//| Expert tick function                                             |
+//+------------------------------------------------------------------+
+void OnTick()
+  {
+//---
+   if(ExtParameters==true)
+     {
+      reset();
+      if(tradetime(stime,etime)==true)
+        {
+         check();
+         open();
+         close();
+        }
+     }
+  }
+//+------------------------------------------------------------------+
+//| Timer function                                                   |
+//+------------------------------------------------------------------+
+void OnTimer()
+  {
+//---
+   textset();
+  }
+//+------------------------------------------------------------------+
+//| ChartEvent function                                              |
+//+------------------------------------------------------------------+
+void OnChartEvent(const int id,
+                  const long &lparam,
+                  const double &dparam,
+                  const string &sparam)
+  {
+   if(id==CHARTEVENT_OBJECT_CLICK)
+     {
+      if(sparam==OBJPREFIX+"HISJCT0")
+        {
+         ObjectSetString(0,OBJPREFIX+"1DAYJC1",OBJPROP_TEXT,DoubleToString(0,0));
+         ObjectSetString(0,OBJPREFIX+"1DAYJC2",OBJPROP_TEXT,DoubleToString(0,0));
+         ObjectSetString(0,OBJPREFIX+"3DAYJC1",OBJPROP_TEXT,DoubleToString(0,0));
+         ObjectSetString(0,OBJPREFIX+"3DAYJC2",OBJPROP_TEXT,DoubleToString(0,0));
+         ObjectSetString(0,OBJPREFIX+"7DAYJC1",OBJPROP_TEXT,DoubleToString(0,0));
+         ObjectSetString(0,OBJPREFIX+"7DAYJC2",OBJPROP_TEXT,DoubleToString(0,0));
+         ObjectSetString(0,OBJPREFIX+"14DAYJC1",OBJPROP_TEXT,DoubleToString(0,0));
+         ObjectSetString(0,OBJPREFIX+"14DAYJC2",OBJPROP_TEXT,DoubleToString(0,0));
+         ObjectSetString(0,OBJPREFIX+"30DAYJC1",OBJPROP_TEXT,DoubleToString(0,0));
+         ObjectSetString(0,OBJPREFIX+"30DAYJC2",OBJPROP_TEXT,DoubleToString(0,0));
+         ObjectSetString(0,OBJPREFIX+"90DAYJC1",OBJPROP_TEXT,DoubleToString(0,0));
+         ObjectSetString(0,OBJPREFIX+"90DAYJC2",OBJPROP_TEXT,DoubleToString(0,0));
+         ObjectSetString(0,OBJPREFIX+"180DAYJC1",OBJPROP_TEXT,DoubleToString(0,0));
+         ObjectSetString(0,OBJPREFIX+"180DAYJC2",OBJPROP_TEXT,DoubleToString(0,0));
+         ObjectSetString(0,OBJPREFIX+"365DAYJC1",OBJPROP_TEXT,DoubleToString(0,0));
+         ObjectSetString(0,OBJPREFIX+"365DAYJC2",OBJPROP_TEXT,DoubleToString(0,0));
+         GlobalVariablesDeleteAll(globalname);
+        }
+     }
+  }
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+void reset()
+  {
+   if(itvlx1dd==true && orderstotal2(UKOIL,"long1")==0 && orderstotal2(USOIL,"long2")==0)
+     {
+      itvlx1dd=false;
+     }
+   if(itvlx2dd==true && orderstotal2(UKOIL,"long2")==0 && orderstotal2(USOIL,"long2")==0)
+     {
+      itvlx2dd=false;
+     }
+   if(itvld1dd==true && orderstotal2(UKOIL,"short1")==0 && orderstotal2(USOIL,"short1")==0)
+     {
+      itvld1dd=false;
+     }
+   if(itvld2dd==true && orderstotal2(UKOIL,"short2")==0 && orderstotal2(USOIL,"short2")==0)
+     {
+      itvld2dd=false;
+     }
+  }
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+void check()
+  {
+   if(IsTradeAllowed(USOIL,TimeCurrent())==true && IsTradeAllowed(UKOIL,TimeCurrent())==true)
+     {
+      double ssjc=NormalizeDouble(MarketInfo(UKOIL,MODE_BID)-MarketInfo(USOIL,MODE_BID),(int)MarketInfo(UKOIL,MODE_DIGITS));
+      //---long1
+      if(ssjc<Long1 && ssjc>=Long2)
+        {
+         if((find((int)GlobalVariableGet(globalname+"long1tktuk"))==true || orderstotal2(UKOIL,"long1")>0) && (find((int)GlobalVariableGet(globalname+"long1tktus"))==true || orderstotal2(USOIL,"long1")>0))
+           {
+            itvlx1dd=true;
+           }
+         if(itvlx1dd==false && IsTradeAllowed()==true)
+           {
+            Print("Long1：Spread "+DoubleToString(ssjc,(int)MarketInfo(UKOIL,MODE_DIGITS))+" <= "+DoubleToString(Long1,(int)MarketInfo(UKOIL,MODE_DIGITS)));
+            if(UKBSx1==OP_BUY && USBSx1==OP_SELL)
+              {
+               ukbuyx1=true;
+               usselx1=true;
+              }
+            if(UKBSx1==OP_SELL && USBSx1==OP_BUY)
+              {
+               ukselx1=true;
+               usbuyx1=true;
+              }
+           }
+        }
+      //---long2
+      if(ssjc<Long2)
+        {
+         if((find((int)GlobalVariableGet(globalname+"long2tktuk"))==true || orderstotal2(UKOIL,"long2")>0) && (find((int)GlobalVariableGet(globalname+"long2tktus"))==true || orderstotal2(USOIL,"long2")>0))
+           {
+            itvlx2dd=true;
+           }
+         if(itvlx2dd==false && IsTradeAllowed()==true)
+           {
+            Print("Long2：Spread "+DoubleToString(ssjc,(int)MarketInfo(UKOIL,MODE_DIGITS))+" <= "+DoubleToString(Long2,(int)MarketInfo(UKOIL,MODE_DIGITS)));
+            if(UKBSx2==OP_BUY && USBSx2==OP_SELL)
+              {
+               ukbuyx2=true;
+               usselx2=true;
+              }
+            if(UKBSx2==OP_SELL && USBSx2==OP_BUY)
+              {
+               ukselx2=true;
+               usbuyx2=true;
+              }
+           }
+        }
+      //--short1
+      if(ssjc>Short1 && ssjc<=Short2)
+        {
+         if((find((int)GlobalVariableGet(globalname+"short1tktuk"))==true || orderstotal2(UKOIL,"short1")>0) && (find((int)GlobalVariableGet(globalname+"short1tktus"))==true || orderstotal2(USOIL,"short1")>0))
+           {
+            itvld1dd=true;
+           }
+         if(itvld1dd==false && IsTradeAllowed()==true)
+           {
+            Print("Short1：Spread "+DoubleToString(ssjc,(int)MarketInfo(UKOIL,MODE_DIGITS))+" >= "+DoubleToString(Short1,(int)MarketInfo(UKOIL,MODE_DIGITS)));
+            if(UKBSd1==OP_BUY && USBSd1==OP_SELL)
+              {
+               ukbuyd1=true;
+               usseld1=true;
+              }
+            if(UKBSd1==OP_SELL && USBSd1==OP_BUY)
+              {
+               ukseld1=true;
+               usbuyd1=true;
+              }
+           }
+        }
+      //--short2
+      if(ssjc>Short2)
+        {
+         if((find((int)GlobalVariableGet(globalname+"short2tktuk"))==true || orderstotal2(UKOIL,"short2")>0) && (find((int)GlobalVariableGet(globalname+"short2tktus"))==true || orderstotal2(USOIL,"short2")>0))
+           {
+            itvld2dd=true;
+           }
+         if(itvld2dd==false && IsTradeAllowed()==true)
+           {
+            Print("Short2：Spread "+DoubleToString(ssjc,(int)MarketInfo(UKOIL,MODE_DIGITS))+" >= "+DoubleToString(Short2,(int)MarketInfo(UKOIL,MODE_DIGITS)));
+            if(UKBSd2==OP_BUY && USBSd2==OP_SELL)
+              {
+               ukbuyd2=true;
+               usseld2=true;
+              }
+            if(UKBSd2==OP_SELL && USBSd2==OP_BUY)
+              {
+               ukseld2=true;
+               usbuyd2=true;
+              }
+           }
+        }
+     }
+  }
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+bool find(int tkt)
+  {
+   bool find=false;
+   for(int i=0;i<OrdersTotal();i++)
+     {
+      if(OrderSelect(i,SELECT_BY_POS,MODE_TRADES))
+        {
+         if(OrderTicket()==tkt)
+           {
+            find=true;
+            break;
+           }
+        }
+     }
+   return(find);
+  }
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+void open()
+  {
+   if(IsTradeAllowed()==true && orderstotal()<8)
+     {
+      //---
+      if(ukbuyx1==true)
+        {
+         int tkt=ordersend(UKOIL,OP_BUY,ilots,MarketInfo(UKOIL,MODE_ASK),"long1");
+         if(tkt>0)
+           {
+            ukbuyx1=false;
+            GlobalVariableSet(globalname+"long1tktuk",tkt);
+           }
+        }
+      if(usselx1==true)
+        {
+         int tkt=ordersend(USOIL,OP_SELL,ilots,MarketInfo(USOIL,MODE_BID),"long1");
+         if(tkt>0)
+           {
+            usselx1=false;
+            GlobalVariableSet(globalname+"long1tktus",tkt);
+           }
+        }
+      if(ukselx1==true)
+        {
+         int tkt=ordersend(UKOIL,OP_SELL,ilots,MarketInfo(UKOIL,MODE_BID),"long1");
+         if(tkt>0)
+           {
+            ukselx1=false;
+            GlobalVariableSet(globalname+"long1tktuk",tkt);
+           }
+        }
+      if(usbuyx1==true)
+        {
+         int tkt=ordersend(USOIL,OP_BUY,ilots,MarketInfo(USOIL,MODE_ASK),"long1");
+         if(tkt>0)
+           {
+            usbuyx1=false;
+            GlobalVariableSet(globalname+"long1tktus",tkt);
+           }
+        }
+      //---
+      if(ukselx2==true)
+        {
+         int tkt=ordersend(UKOIL,OP_SELL,ilots,MarketInfo(UKOIL,MODE_BID),"long2");
+         if(tkt>0)
+           {
+            ukselx2=false;
+            GlobalVariableSet(globalname+"long2tktuk",tkt);
+           }
+        }
+      if(usbuyx2==true)
+        {
+         int tkt=ordersend(USOIL,OP_BUY,ilots,MarketInfo(USOIL,MODE_ASK),"long2");
+         if(tkt>0)
+           {
+            usbuyx2=false;
+            GlobalVariableSet(globalname+"long2tktus",tkt);
+           }
+        }
+      if(ukbuyx2==true)
+        {
+         int tkt=ordersend(UKOIL,OP_BUY,ilots,MarketInfo(UKOIL,MODE_ASK),"long2");
+         if(tkt>0)
+           {
+            ukbuyx2=false;
+            GlobalVariableSet(globalname+"long2tktuk",tkt);
+           }
+        }
+      if(usselx2==true)
+        {
+         int tkt=ordersend(USOIL,OP_SELL,ilots,MarketInfo(USOIL,MODE_BID),"long2");
+         if(tkt>0)
+           {
+            usselx2=false;
+            GlobalVariableSet(globalname+"long2tktus",tkt);
+           }
+        }
+      //---
+      if(ukbuyd1==true)
+        {
+         int tkt=ordersend(UKOIL,OP_BUY,ilots,MarketInfo(UKOIL,MODE_ASK),"short1");
+         if(tkt>0)
+           {
+            ukbuyd1=false;
+            GlobalVariableSet(globalname+"short1tktuk",tkt);
+           }
+        }
+      if(usseld1==true)
+        {
+         int tkt=ordersend(USOIL,OP_SELL,ilots,MarketInfo(USOIL,MODE_BID),"short1");
+         if(tkt>0)
+           {
+            usseld1=false;
+            GlobalVariableSet(globalname+"short1tktus",tkt);
+           }
+        }
+      if(ukseld1==true)
+        {
+         int tkt=ordersend(UKOIL,OP_SELL,ilots,MarketInfo(UKOIL,MODE_BID),"short1");
+         if(tkt>0)
+           {
+            ukseld1=false;
+            GlobalVariableSet(globalname+"short1tktuk",tkt);
+           }
+        }
+      if(usbuyd1==true)
+        {
+         int tkt=ordersend(USOIL,OP_BUY,ilots,MarketInfo(USOIL,MODE_ASK),"short1");
+         if(tkt>0)
+           {
+            usbuyd1=false;
+            GlobalVariableSet(globalname+"short1tktus",tkt);
+           }
+        }
+      //---
+      if(ukbuyd2==true)
+        {
+         int tkt=ordersend(UKOIL,OP_BUY,ilots,MarketInfo(UKOIL,MODE_ASK),"short2");
+         if(tkt>0)
+           {
+            ukbuyd2=false;
+            GlobalVariableSet(globalname+"short2tktuk",tkt);
+           }
+        }
+      if(usseld2==true)
+        {
+         int tkt=ordersend(USOIL,OP_SELL,ilots,MarketInfo(USOIL,MODE_BID),"short2");
+         if(tkt>0)
+           {
+            usseld2=false;
+            GlobalVariableSet(globalname+"short2tktus",tkt);
+           }
+        }
+      if(ukseld2==true)
+        {
+         int tkt=ordersend(UKOIL,OP_SELL,ilots,MarketInfo(UKOIL,MODE_BID),"short2");
+         if(tkt>0)
+           {
+            ukseld2=false;
+            GlobalVariableSet(globalname+"short2tktuk",tkt);
+           }
+        }
+      if(usbuyd2==true)
+        {
+         int tkt=ordersend(USOIL,OP_BUY,ilots,MarketInfo(USOIL,MODE_ASK),"short2");
+         if(tkt>0)
+           {
+            usbuyd2=false;
+            GlobalVariableSet(globalname+"short2tktus",tkt);
+           }
+        }
+     }
+  }
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+void close()
+  {
+   double pf=0;
+   for(int i=0;i<OrdersTotal();i++)
+     {
+      if(OrderSelect(i,SELECT_BY_POS,MODE_TRADES))
+        {
+         if((OrderSymbol()==UKOIL || OrderSymbol()==USOIL) && OrderMagicNumber()==magic)
+           {
+            pf+=OrderProfit();
+           }
+        }
+     }
+   if(pf>=profit && orderstotal()>0)
+     {
+      closeall=true;
+     }
+   if(closeall==true)
+     {
+      orderclose();
+      if(orderstotal()==0)
+        {
+         closeall=false;
+        }
+     }
+   else
+     {
+      Sleep(1000);
+     }
+     
+  }
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+bool tradetime(int starttime,int endtime)
+  {
+   bool tt=false;
+   if(starttime<endtime)
+     {
+      if(TimeHour(TimeCurrent())>=starttime && TimeHour(TimeCurrent())<endtime)
+        {
+         tt=true;
+        }
+     }
+   if(starttime>endtime)
+     {
+      if(TimeHour(TimeCurrent())>=starttime || TimeHour(TimeCurrent())<endtime)
+        {
+         tt=true;
+        }
+     }
+   return(tt);
+  }
+//+------------------------------------------------------------------+
+//| ordersend                                                                 |
+//+------------------------------------------------------------------+
+int ordersend(string symbol,int type,double lots,double opprice,string zhushi)
+  {
+   ResetLastError();
+   double slprice=0,tpprice=0;
+   int    tkt=-1;
+   double n=NormalizeDouble(lots/MarketInfo(symbol,MODE_MINLOT),0);
+   lots=MarketInfo(symbol,MODE_MINLOT)*n;
+
+   if(type==OP_BUY)
+     {
+      tkt=OrderSend(symbol,OP_BUY,lots,opprice,10,0,0,zhushi,magic,0,clrRed);
+      if(tkt<0)
+        {
+         Print(symbol+" Order Send Failed : Code "+IntegerToString(_LastError,0));
+        }
+     }
+   if(type==OP_SELL)
+     {
+      tkt=OrderSend(symbol,OP_SELL,lots,opprice,10,0,0,zhushi,magic,0,clrGreen);
+      if(tkt<0)
+        {
+         Print(symbol+" Order Send Failed : Code "+IntegerToString(_LastError,0));
+        }
+     }
+   return(tkt);
+  }
+//+------------------------------------------------------------------+
+//| orderstotal                                                      |
+//+------------------------------------------------------------------+
+int orderstotal()
+  {
+   int a=0;
+   for(int i=0; i<OrdersTotal(); i++)
+     {
+      if(OrderSelect(i,SELECT_BY_POS,MODE_TRADES))
+        {
+         if((OrderSymbol()==UKOIL || OrderSymbol()==USOIL) && OrderMagicNumber()==magic)
+           {
+            a++;
+           }
+        }
+     }
+   return(a);
+  }
+//---
+int orderstotal2(string symbol,string zshi)
+  {
+   int a=0;
+   for(int i=0; i<OrdersTotal(); i++)
+     {
+      if(OrderSelect(i,SELECT_BY_POS,MODE_TRADES))
+        {
+         if(OrderSymbol()==symbol && OrderMagicNumber()==magic && OrderComment()==zshi)
+           {
+            a++;
+           }
+        }
+     }
+   return(a);
+  }
+//+------------------------------------------------------------------+
+//| order close                                                      |
+//+------------------------------------------------------------------+
+void orderclose()
+  {
+   ResetLastError();
+   for(int i=OrdersTotal()-1; i>=0; i--)
+     {
+      if(OrderSelect(i,SELECT_BY_POS,MODE_TRADES))
+        {
+         if((OrderSymbol()==UKOIL || OrderSymbol()==USOIL) && OrderMagicNumber()==magic)
+           {
+            if(!OrderClose(OrderTicket(),OrderLots(),OrderClosePrice(),20,clrWhite))
+              {
+               Print(OrderSymbol()+" Order Close Failed : Code "+IntegerToString(_LastError,0));
+              }
+           }
+        }
+     }
+  }
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+double interval_max(int time)
+  {
+   double jc=-99999999;
+   if(time==1)
+     {
+      for(int i=0;i<1440;i++)
+        {
+         for(int j=0;j<1440;j++)
+           {
+            if(iTime(UKOIL,1,i)==iTime(USOIL,1,j) && iTime(UKOIL,1,i)>(TimeCurrent()-1*86400))
+              {
+               if((iClose(UKOIL,1,i)-iClose(USOIL,1,j))>jc)
+                 {
+                  jc=iClose(UKOIL,1,i)-iClose(USOIL,1,j);
+                 }
+               break;
+              }
+           }
+        }
+      GlobalVariableSet(globalname+"1DAYMAX",jc);
+     }
+   if(time==3)
+     {
+      for(int i=0;i<4320;i++)
+        {
+         for(int j=0;j<4320;j++)
+           {
+            if(iTime(UKOIL,1,i)==iTime(USOIL,1,j) && iTime(UKOIL,1,i)>(TimeCurrent()-3*86400))
+              {
+               if((iClose(UKOIL,1,i)-iClose(USOIL,1,j))>jc)
+                 {
+                  jc=iClose(UKOIL,1,i)-iClose(USOIL,1,j);
+                 }
+               break;
+              }
+           }
+        }
+      GlobalVariableSet(globalname+"3DAYMAX",jc);
+     }
+   if(time==7)
+     {
+      for(int i=0;i<10080;i++)
+        {
+         for(int j=0;j<10080;j++)
+           {
+            if(iTime(UKOIL,1,i)==iTime(USOIL,1,j) && iTime(UKOIL,1,i)>(TimeCurrent()-7*86400))
+              {
+               if((iClose(UKOIL,1,i)-iClose(USOIL,1,j))>jc)
+                 {
+                  jc=iClose(UKOIL,1,i)-iClose(USOIL,1,j);
+                 }
+               break;
+              }
+           }
+        }
+      GlobalVariableSet(globalname+"7DAYMAX",jc);
+     }
+   if(time==14)
+     {
+      for(int i=0;i<336;i++)
+        {
+         for(int j=0;j<336;j++)
+           {
+            if(iTime(UKOIL,60,i)==iTime(USOIL,60,j) && iTime(UKOIL,60,i)>(TimeCurrent()-14*86400))
+              {
+               if((iClose(UKOIL,60,i)-iClose(USOIL,60,j))>jc)
+                 {
+                  jc=iClose(UKOIL,60,i)-iClose(USOIL,60,j);
+                 }
+               break;
+              }
+           }
+        }
+      GlobalVariableSet(globalname+"14DAYMAX",jc);
+     }
+   if(time==30)
+     {
+      for(int i=0;i<720;i++)
+        {
+         for(int j=0;j<720;j++)
+           {
+            if(iTime(UKOIL,60,i)==iTime(USOIL,60,j) && iTime(UKOIL,60,i)>(TimeCurrent()-30*86400))
+              {
+               if((iClose(UKOIL,60,i)-iClose(USOIL,60,j))>jc)
+                 {
+                  jc=iClose(UKOIL,60,i)-iClose(USOIL,60,j);
+                 }
+               break;
+              }
+           }
+        }
+      GlobalVariableSet(globalname+"30DAYMAX",jc);
+     }
+   if(time==90)
+     {
+      for(int i=0;i<2160;i++)
+        {
+         for(int j=0;j<2160;j++)
+           {
+            if(iTime(UKOIL,60,i)==iTime(USOIL,60,j) && iTime(UKOIL,60,i)>(TimeCurrent()-90*86400))
+              {
+               if((iClose(UKOIL,60,i)-iClose(USOIL,60,j))>jc)
+                 {
+                  jc=iClose(UKOIL,60,i)-iClose(USOIL,60,j);
+                 }
+               break;
+              }
+           }
+        }
+      GlobalVariableSet(globalname+"90DAYMAX",jc);
+     }
+   if(time==180)
+     {
+      for(int i=0;i<4320;i++)
+        {
+         for(int j=0;j<4320;j++)
+           {
+            if(iTime(UKOIL,60,i)==iTime(USOIL,60,j) && iTime(UKOIL,60,i)>(TimeCurrent()-180*86400))
+              {
+               if((iClose(UKOIL,60,i)-iClose(USOIL,60,j))>jc)
+                 {
+                  jc=iClose(UKOIL,60,i)-iClose(USOIL,60,j);
+                 }
+               break;
+              }
+           }
+        }
+      GlobalVariableSet(globalname+"180DAYMAX",jc);
+     }
+   if(time==365)
+     {
+      for(int i=0;i<8760;i++)
+        {
+         for(int j=0;j<8760;j++)
+           {
+            if(iTime(UKOIL,60,i)==iTime(USOIL,60,j) && iTime(UKOIL,60,i)>(TimeCurrent()-365*86400))
+              {
+               if((iClose(UKOIL,60,i)-iClose(USOIL,60,j))>jc)
+                 {
+                  jc=iClose(UKOIL,60,i)-iClose(USOIL,60,j);
+                 }
+               break;
+              }
+           }
+        }
+      GlobalVariableSet(globalname+"365DAYMAX",jc);
+     }
+   if(jc==-99999999)
+     {
+      jc=0;
+     }
+   return(jc);
+  }
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+double interval_min(int time)
+  {
+   double jc=99999999;
+   if(time==1)
+     {
+      for(int i=0;i<1440;i++)
+        {
+         for(int j=0;j<1440;j++)
+           {
+            if(iTime(UKOIL,1,i)==iTime(USOIL,1,j) && iTime(UKOIL,1,i)>(TimeCurrent()-1*86400))
+              {
+               if((iClose(UKOIL,1,i)-iClose(USOIL,1,j))<jc)
+                 {
+                  jc=iClose(UKOIL,1,i)-iClose(USOIL,1,j);
+                 }
+               break;
+              }
+           }
+        }
+      GlobalVariableSet(globalname+"1DAYMIN",jc);
+     }
+   if(time==3)
+     {
+      for(int i=0;i<4320;i++)
+        {
+         for(int j=0;j<4320;j++)
+           {
+            if(iTime(UKOIL,1,i)==iTime(USOIL,1,j) && iTime(UKOIL,1,i)>(TimeCurrent()-3*86400))
+              {
+               if((iClose(UKOIL,1,i)-iClose(USOIL,1,j))<jc)
+                 {
+                  jc=iClose(UKOIL,1,i)-iClose(USOIL,1,j);
+                 }
+               break;
+              }
+           }
+        }
+      GlobalVariableSet(globalname+"3DAYMIN",jc);
+     }
+   if(time==7)
+     {
+      for(int i=0;i<10080;i++)
+        {
+         for(int j=0;j<10080;j++)
+           {
+            if(iTime(UKOIL,1,i)==iTime(USOIL,1,j) && iTime(UKOIL,1,i)>(TimeCurrent()-7*86400))
+              {
+               if((iClose(UKOIL,1,i)-iClose(USOIL,1,j))<jc)
+                 {
+                  jc=iClose(UKOIL,1,i)-iClose(USOIL,1,j);
+                 }
+               break;
+              }
+           }
+        }
+      GlobalVariableSet(globalname+"7DAYMIN",jc);
+     }
+   if(time==14)
+     {
+      for(int i=0;i<336;i++)
+        {
+         for(int j=0;j<336;j++)
+           {
+            if(iTime(UKOIL,60,i)==iTime(USOIL,60,j) && iTime(UKOIL,60,i)>(TimeCurrent()-14*86400))
+              {
+               if((iClose(UKOIL,60,i)-iClose(USOIL,60,j))<jc)
+                 {
+                  jc=iClose(UKOIL,60,i)-iClose(USOIL,60,j);
+                 }
+               break;
+              }
+           }
+        }
+      GlobalVariableSet(globalname+"14DAYMIN",jc);
+     }
+   if(time==30)
+     {
+      for(int i=0;i<720;i++)
+        {
+         for(int j=0;j<720;j++)
+           {
+            if(iTime(UKOIL,60,i)==iTime(USOIL,60,j) && iTime(UKOIL,60,i)>(TimeCurrent()-30*86400))
+              {
+               if((iClose(UKOIL,60,i)-iClose(USOIL,60,j))<jc)
+                 {
+                  jc=iClose(UKOIL,60,i)-iClose(USOIL,60,j);
+                 }
+               break;
+              }
+           }
+        }
+      GlobalVariableSet(globalname+"30DAYMIN",jc);
+     }
+   if(time==90)
+     {
+      for(int i=0;i<2160;i++)
+        {
+         for(int j=0;j<2160;j++)
+           {
+            if(iTime(UKOIL,60,i)==iTime(USOIL,60,j) && iTime(UKOIL,60,i)>(TimeCurrent()-90*86400))
+              {
+               if((iClose(UKOIL,60,i)-iClose(USOIL,60,j))<jc)
+                 {
+                  jc=iClose(UKOIL,60,i)-iClose(USOIL,60,j);
+                 }
+               break;
+              }
+           }
+        }
+      GlobalVariableSet(globalname+"90DAYMIN",jc);
+     }
+   if(time==180)
+     {
+      for(int i=0;i<4320;i++)
+        {
+         for(int j=0;j<4320;j++)
+           {
+            if(iTime(UKOIL,60,i)==iTime(USOIL,60,j) && iTime(UKOIL,60,i)>(TimeCurrent()-180*86400))
+              {
+               if((iClose(UKOIL,60,i)-iClose(USOIL,60,j))<jc)
+                 {
+                  jc=iClose(UKOIL,60,i)-iClose(USOIL,60,j);
+                 }
+               break;
+              }
+           }
+        }
+      GlobalVariableSet(globalname+"180DAYMIN",jc);
+     }
+   if(time==365)
+     {
+      for(int i=0;i<8760;i++)
+        {
+         for(int j=0;j<8760;j++)
+           {
+            if(iTime(UKOIL,60,i)==iTime(USOIL,60,j) && iTime(UKOIL,60,i)>(TimeCurrent()-365*86400))
+              {
+               if((iClose(UKOIL,60,i)-iClose(USOIL,60,j))<jc)
+                 {
+                  jc=iClose(UKOIL,60,i)-iClose(USOIL,60,j);
+                 }
+               break;
+              }
+           }
+        }
+      GlobalVariableSet(globalname+"365DAYMIN",jc);
+     }     
+   if(jc==99999999)
+     {
+      jc=0;
+     }
+   return(jc);
+  }
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+void textset()
+  {
+   double ssjc=0;
+   if(MarketInfo(UKOIL,MODE_BID)!=0 && MarketInfo(USOIL,MODE_BID)!=0)
+     {
+      ssjc=MarketInfo(UKOIL,MODE_BID)-MarketInfo(USOIL,MODE_BID);
+     }
+   else
+     {
+      ssjc=0;
+     }
+   ObjectSetString(0,OBJPREFIX+"SSJCTX1",OBJPROP_TEXT,DoubleToString(ssjc,(int)MarketInfo(UKOIL,MODE_DIGITS)));
+   double pf=0;
+   for(int i=0;i<OrdersTotal();i++)
+     {
+      if(OrderSelect(i,SELECT_BY_POS,MODE_TRADES))
+        {
+         if((OrderSymbol()==UKOIL || OrderSymbol()==USOIL) && OrderMagicNumber()==magic)
+           {
+            pf+=OrderProfit();
+           }
+        }
+     }
+   ObjectSetString(0,OBJPREFIX+"PROFIT1",OBJPROP_TEXT,DoubleToString(pf,2));
+   if(hide==false)
+     {
+      if(GlobalVariableCheck(globalname+"1DAYMAX")==false)
+        {
+         GlobalVariableSet(globalname+"1DAYMAX",interval_max(1));
+        }
+      if(GlobalVariableCheck(globalname+"3DAYMAX")==false)
+        {
+         GlobalVariableSet(globalname+"3DAYMAX",interval_max(3));
+        }
+      if(GlobalVariableCheck(globalname+"7DAYMAX")==false)
+        {
+         GlobalVariableSet(globalname+"7DAYMAX",interval_max(7));
+        }
+      if(GlobalVariableCheck(globalname+"14DAYMAX")==false)
+        {
+         GlobalVariableSet(globalname+"14DAYMAX",interval_max(14));
+        }
+      if(GlobalVariableCheck(globalname+"30DAYMAX")==false)
+        {
+         GlobalVariableSet(globalname+"30DAYMAX",interval_max(30));
+        }
+      if(GlobalVariableCheck(globalname+"90DAYMAX")==false)
+        {
+         GlobalVariableSet(globalname+"90DAYMAX",interval_max(90));
+        }
+      if(GlobalVariableCheck(globalname+"180DAYMAX")==false)
+        {
+         GlobalVariableSet(globalname+"180DAYMAX",interval_max(180));
+        }
+      if(GlobalVariableCheck(globalname+"365DAYMAX")==false)
+        {
+         GlobalVariableSet(globalname+"365DAYMAX",interval_max(365));
+        }
+      if(GlobalVariableCheck(globalname+"1DAYMIN")==false)
+        {
+         GlobalVariableSet(globalname+"1DAYMIN",interval_min(1));
+        }
+      if(GlobalVariableCheck(globalname+"3DAYMIN")==false)
+        {
+         GlobalVariableSet(globalname+"3DAYMIN",interval_min(3));
+        }
+      if(GlobalVariableCheck(globalname+"7DAYMIN")==false)
+        {
+         GlobalVariableSet(globalname+"7DAYMIN",interval_min(7));
+        }
+      if(GlobalVariableCheck(globalname+"14DAYMIN")==false)
+        {
+         GlobalVariableSet(globalname+"14DAYMIN",interval_min(14));
+        }
+      if(GlobalVariableCheck(globalname+"30DAYMIN")==false)
+        {
+         GlobalVariableSet(globalname+"30DAYMIN",interval_min(30));
+        }
+      if(GlobalVariableCheck(globalname+"90DAYMIN")==false)
+        {
+         GlobalVariableSet(globalname+"90DAYMIN",interval_min(90));
+        }
+      if(GlobalVariableCheck(globalname+"180DAYMIN")==false)
+        {
+         GlobalVariableSet(globalname+"180DAYMIN",interval_min(180));
+        }
+      if(GlobalVariableCheck(globalname+"365DAYMIN")==false)
+        {
+         GlobalVariableSet(globalname+"365DAYMIN",interval_min(365));
+        }
+      if(ssjc>GlobalVariableGet(globalname+"1DAYMAX"))
+        {
+         ObjectSetString(0,OBJPREFIX+"1DAYJC1",OBJPROP_TEXT,DoubleToString(ssjc,(int)MarketInfo(UKOIL,MODE_DIGITS)));
+         GlobalVariableSet(globalname+"1DAYMAX",ssjc);
+        }
+      else
+        {
+         ObjectSetString(0,OBJPREFIX+"1DAYJC1",OBJPROP_TEXT,DoubleToString(GlobalVariableGet(globalname+"1DAYMAX"),(int)MarketInfo(UKOIL,MODE_DIGITS)));
+        }
+      if(ssjc<GlobalVariableGet(globalname+"1DAYMIN"))
+        {
+         ObjectSetString(0,OBJPREFIX+"1DAYJC2",OBJPROP_TEXT,DoubleToString(ssjc,(int)MarketInfo(UKOIL,MODE_DIGITS)));
+         GlobalVariableSet(globalname+"1DAYMIN",ssjc);
+        }
+      else
+        {
+         ObjectSetString(0,OBJPREFIX+"1DAYJC2",OBJPROP_TEXT,DoubleToString(GlobalVariableGet(globalname+"1DAYMIN"),(int)MarketInfo(UKOIL,MODE_DIGITS)));
+        }
+        
+      if(ssjc>GlobalVariableGet(globalname+"3DAYMAX"))
+        {
+         ObjectSetString(0,OBJPREFIX+"3DAYJC1",OBJPROP_TEXT,DoubleToString(ssjc,(int)MarketInfo(UKOIL,MODE_DIGITS)));
+         GlobalVariableSet(globalname+"3DAYMAX",ssjc);
+        }
+      else
+        {
+         ObjectSetString(0,OBJPREFIX+"3DAYJC1",OBJPROP_TEXT,DoubleToString(GlobalVariableGet(globalname+"3DAYMAX"),(int)MarketInfo(UKOIL,MODE_DIGITS)));
+        }
+      if(ssjc<GlobalVariableGet(globalname+"3DAYMIN"))
+        {
+         ObjectSetString(0,OBJPREFIX+"3DAYJC2",OBJPROP_TEXT,DoubleToString(ssjc,(int)MarketInfo(UKOIL,MODE_DIGITS)));
+         GlobalVariableSet(globalname+"3DAYMIN",ssjc);
+        }
+      else
+        {
+         ObjectSetString(0,OBJPREFIX+"3DAYJC2",OBJPROP_TEXT,DoubleToString(GlobalVariableGet(globalname+"3DAYMIN"),(int)MarketInfo(UKOIL,MODE_DIGITS)));
+        }
+
+      if(ssjc>GlobalVariableGet(globalname+"7DAYMAX"))
+        {
+         ObjectSetString(0,OBJPREFIX+"7DAYJC1",OBJPROP_TEXT,DoubleToString(ssjc,(int)MarketInfo(UKOIL,MODE_DIGITS)));
+         GlobalVariableSet(globalname+"7DAYMAX",ssjc);
+        }
+      else
+        {
+         ObjectSetString(0,OBJPREFIX+"7DAYJC1",OBJPROP_TEXT,DoubleToString(GlobalVariableGet(globalname+"7DAYMAX"),(int)MarketInfo(UKOIL,MODE_DIGITS)));
+        }
+      if(ssjc<GlobalVariableGet(globalname+"7DAYMIN"))
+        {
+         ObjectSetString(0,OBJPREFIX+"7DAYJC2",OBJPROP_TEXT,DoubleToString(ssjc,(int)MarketInfo(UKOIL,MODE_DIGITS)));
+         GlobalVariableSet(globalname+"7DAYMIN",ssjc);
+        }
+      else
+        {
+         ObjectSetString(0,OBJPREFIX+"7DAYJC2",OBJPROP_TEXT,DoubleToString(GlobalVariableGet(globalname+"7DAYMIN"),(int)MarketInfo(UKOIL,MODE_DIGITS)));
+        }
+
+
+      if(ssjc>GlobalVariableGet(globalname+"14DAYMAX"))
+        {
+         ObjectSetString(0,OBJPREFIX+"14DAYJC1",OBJPROP_TEXT,DoubleToString(ssjc,(int)MarketInfo(UKOIL,MODE_DIGITS)));
+         GlobalVariableSet(globalname+"14DAYMAX",ssjc);
+        }
+      else
+        {
+         ObjectSetString(0,OBJPREFIX+"14DAYJC1",OBJPROP_TEXT,DoubleToString(GlobalVariableGet(globalname+"14DAYMAX"),(int)MarketInfo(UKOIL,MODE_DIGITS)));
+        }
+      if(ssjc<GlobalVariableGet(globalname+"14DAYMIN"))
+        {
+         ObjectSetString(0,OBJPREFIX+"14DAYJC2",OBJPROP_TEXT,DoubleToString(ssjc,(int)MarketInfo(UKOIL,MODE_DIGITS)));
+         GlobalVariableSet(globalname+"14DAYMIN",ssjc);
+        }
+      else
+        {
+         ObjectSetString(0,OBJPREFIX+"14DAYJC2",OBJPROP_TEXT,DoubleToString(GlobalVariableGet(globalname+"14DAYMIN"),(int)MarketInfo(UKOIL,MODE_DIGITS)));
+        }
+        
+      if(ssjc>GlobalVariableGet(globalname+"30DAYMAX"))
+        {
+         ObjectSetString(0,OBJPREFIX+"30DAYJC1",OBJPROP_TEXT,DoubleToString(ssjc,(int)MarketInfo(UKOIL,MODE_DIGITS)));
+         GlobalVariableSet(globalname+"30DAYMAX",ssjc);
+        }
+      else
+        {
+         ObjectSetString(0,OBJPREFIX+"30DAYJC1",OBJPROP_TEXT,DoubleToString(GlobalVariableGet(globalname+"30DAYMAX"),(int)MarketInfo(UKOIL,MODE_DIGITS)));
+        }
+      if(ssjc<GlobalVariableGet(globalname+"30DAYMIN"))
+        {
+         ObjectSetString(0,OBJPREFIX+"30DAYJC2",OBJPROP_TEXT,DoubleToString(ssjc,(int)MarketInfo(UKOIL,MODE_DIGITS)));
+         GlobalVariableSet(globalname+"30DAYMIN",ssjc);
+        }
+      else
+        {
+         ObjectSetString(0,OBJPREFIX+"30DAYJC2",OBJPROP_TEXT,DoubleToString(GlobalVariableGet(globalname+"30DAYMIN"),(int)MarketInfo(UKOIL,MODE_DIGITS)));
+        }
+        
+      if(ssjc>GlobalVariableGet(globalname+"90DAYMAX"))
+        {
+         ObjectSetString(0,OBJPREFIX+"90DAYJC1",OBJPROP_TEXT,DoubleToString(ssjc,(int)MarketInfo(UKOIL,MODE_DIGITS)));
+         GlobalVariableSet(globalname+"90DAYMAX",ssjc);
+        }
+      else
+        {
+         ObjectSetString(0,OBJPREFIX+"90DAYJC1",OBJPROP_TEXT,DoubleToString(GlobalVariableGet(globalname+"90DAYMAX"),(int)MarketInfo(UKOIL,MODE_DIGITS)));
+        }
+      if(ssjc<GlobalVariableGet(globalname+"90DAYMIN"))
+        {
+         ObjectSetString(0,OBJPREFIX+"90DAYJC2",OBJPROP_TEXT,DoubleToString(ssjc,(int)MarketInfo(UKOIL,MODE_DIGITS)));
+         GlobalVariableSet(globalname+"90DAYMIN",ssjc);
+        }
+      else
+        {
+         ObjectSetString(0,OBJPREFIX+"90DAYJC2",OBJPROP_TEXT,DoubleToString(GlobalVariableGet(globalname+"90DAYMIN"),(int)MarketInfo(UKOIL,MODE_DIGITS)));
+        }
+        
+      if(ssjc>GlobalVariableGet(globalname+"180DAYMAX"))
+        {
+         ObjectSetString(0,OBJPREFIX+"180DAYJC1",OBJPROP_TEXT,DoubleToString(ssjc,(int)MarketInfo(UKOIL,MODE_DIGITS)));
+         GlobalVariableSet(globalname+"180DAYMAX",ssjc);
+        }
+      else
+        {
+         ObjectSetString(0,OBJPREFIX+"180DAYJC1",OBJPROP_TEXT,DoubleToString(GlobalVariableGet(globalname+"180DAYMAX"),(int)MarketInfo(UKOIL,MODE_DIGITS)));
+        }
+      if(ssjc<GlobalVariableGet(globalname+"180DAYMIN"))
+        {
+         ObjectSetString(0,OBJPREFIX+"180DAYJC2",OBJPROP_TEXT,DoubleToString(ssjc,(int)MarketInfo(UKOIL,MODE_DIGITS)));
+         GlobalVariableSet(globalname+"180DAYMIN",ssjc);
+        }
+      else
+        {
+         ObjectSetString(0,OBJPREFIX+"180DAYJC2",OBJPROP_TEXT,DoubleToString(GlobalVariableGet(globalname+"180DAYMIN"),(int)MarketInfo(UKOIL,MODE_DIGITS)));
+        }
+        
+      if(ssjc>GlobalVariableGet(globalname+"365DAYMAX"))
+        {
+         ObjectSetString(0,OBJPREFIX+"365DAYJC1",OBJPROP_TEXT,DoubleToString(ssjc,(int)MarketInfo(UKOIL,MODE_DIGITS)));
+         GlobalVariableSet(globalname+"365DAYMAX",ssjc);
+        }
+      else
+        {
+         ObjectSetString(0,OBJPREFIX+"365DAYJC1",OBJPROP_TEXT,DoubleToString(GlobalVariableGet(globalname+"365DAYMAX"),(int)MarketInfo(UKOIL,MODE_DIGITS)));
+        }
+      if(ssjc<GlobalVariableGet(globalname+"365DAYMIN"))
+        {
+         ObjectSetString(0,OBJPREFIX+"365DAYJC2",OBJPROP_TEXT,DoubleToString(ssjc,(int)MarketInfo(UKOIL,MODE_DIGITS)));
+         GlobalVariableSet(globalname+"365DAYMIN",ssjc);
+        }
+      else
+        {
+         ObjectSetString(0,OBJPREFIX+"365DAYJC2",OBJPROP_TEXT,DoubleToString(GlobalVariableGet(globalname+"365DAYMIN"),(int)MarketInfo(UKOIL,MODE_DIGITS)));
+        }
+     }
+  }
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+void objectscreateall()
+  {
+   int width0=w*z;
+   int width1=w*z*3;
+   int height0=h*z;
+   int ztsz1=z;
+   color ztclr1=clrWhite;
+   color bgclr1=C'55,55,55';
+   color bdclr1=C'55,55,55';
+   color bdclr2=C'88,88,88';
+   ENUM_BASE_CORNER corner=CORNER_LEFT_UPPER;
+   //RectLblCreate(OBJPREFIX+"PANEL00",x,y,width1,height0*10,corner,bgclr1,BORDER_FLAT,bdclr2,STYLE_SOLID,1);
+   int n=0;
+   EditCreate(OBJPREFIX+"SSJCTX0",x,y,width0+1,height0+1,corner,ALIGN_LEFT,TRUE,"C-Spread",ztsz1,ztclr1,bgclr1,bdclr2);
+   EditCreate(OBJPREFIX+"SSJCTX1",x+width0,y,width0*2,height0+1,corner,ALIGN_CENTER,TRUE,"0.00",ztsz1,ztclr1,bgclr1,bdclr2);
+   n++;
+   EditCreate(OBJPREFIX+"PROFIT0",x,y+height0*n,width0+1,height0+1,corner,ALIGN_LEFT,TRUE,"Profit",ztsz1,ztclr1,bgclr1,bdclr2);
+   EditCreate(OBJPREFIX+"PROFIT1",x+width0,y+height0*n,width0*2,height0+1,corner,ALIGN_CENTER,TRUE,"0.00",ztsz1,ztclr1,bgclr1,bdclr2);
+   if(hide==false)
+     {
+      n++;
+      EditCreate(OBJPREFIX+"HISJCT0",x,y+height0*n,width0+1,height0+1,corner,ALIGN_LEFT,TRUE,"H-Spread",ztsz1,ztclr1,bgclr1,bdclr2);
+      EditCreate(OBJPREFIX+"HISJCT1",x+width0,y+height0*n,width0+1,height0+1,corner,ALIGN_CENTER,TRUE,"Max",ztsz1,ztclr1,bgclr1,bdclr2);
+      EditCreate(OBJPREFIX+"HISJCT2",x+width0*2,y+height0*n,width0,height0+1,corner,ALIGN_CENTER,TRUE,"Mini",ztsz1,ztclr1,bgclr1,bdclr2);
+      n++;
+      EditCreate(OBJPREFIX+"1DAYJC0",x,y+height0*n,width0+1,height0+1,corner,ALIGN_RIGHT,TRUE,"1-Day ",ztsz1,ztclr1,bgclr1,bdclr2);
+      EditCreate(OBJPREFIX+"1DAYJC1",x+width0,y+height0*n,width0+1,height0+1,corner,ALIGN_CENTER,TRUE,"0.00",ztsz1,ztclr1,bgclr1,bdclr2);
+      EditCreate(OBJPREFIX+"1DAYJC2",x+width0*2,y+height0*n,width0,height0+1,corner,ALIGN_CENTER,TRUE,"0.00",ztsz1,ztclr1,bgclr1,bdclr2);
+      n++;
+      EditCreate(OBJPREFIX+"3DAYJC0",x,y+height0*n,width0+1,height0+1,corner,ALIGN_RIGHT,TRUE,"3-Day ",ztsz1,ztclr1,bgclr1,bdclr2);
+      EditCreate(OBJPREFIX+"3DAYJC1",x+width0,y+height0*n,width0+1,height0+1,corner,ALIGN_CENTER,TRUE,"0.00",ztsz1,ztclr1,bgclr1,bdclr2);
+      EditCreate(OBJPREFIX+"3DAYJC2",x+width0*2,y+height0*n,width0,height0+1,corner,ALIGN_CENTER,TRUE,"0.00",ztsz1,ztclr1,bgclr1,bdclr2);
+      n++;
+      EditCreate(OBJPREFIX+"7DAYJC0",x,y+height0*n,width0+1,height0+1,corner,ALIGN_RIGHT,TRUE,"7-Day ",ztsz1,ztclr1,bgclr1,bdclr2);
+      EditCreate(OBJPREFIX+"7DAYJC1",x+width0,y+height0*n,width0+1,height0+1,corner,ALIGN_CENTER,TRUE,"0.00",ztsz1,ztclr1,bgclr1,bdclr2);
+      EditCreate(OBJPREFIX+"7DAYJC2",x+width0*2,y+height0*n,width0,height0+1,corner,ALIGN_CENTER,TRUE,"0.00",ztsz1,ztclr1,bgclr1,bdclr2);
+      n++;
+      EditCreate(OBJPREFIX+"14DAYJC0",x,y+height0*n,width0+1,height0+1,corner,ALIGN_RIGHT,TRUE,"14-Day ",ztsz1,ztclr1,bgclr1,bdclr2);
+      EditCreate(OBJPREFIX+"14DAYJC1",x+width0,y+height0*n,width0+1,height0+1,corner,ALIGN_CENTER,TRUE,"0.00",ztsz1,ztclr1,bgclr1,bdclr2);
+      EditCreate(OBJPREFIX+"14DAYJC2",x+width0*2,y+height0*n,width0,height0+1,corner,ALIGN_CENTER,TRUE,"0.00",ztsz1,ztclr1,bgclr1,bdclr2);
+      n++;
+      EditCreate(OBJPREFIX+"30DAYJC0",x,y+height0*n,width0+1,height0+1,corner,ALIGN_RIGHT,TRUE,"30-Day ",ztsz1,ztclr1,bgclr1,bdclr2);
+      EditCreate(OBJPREFIX+"30DAYJC1",x+width0,y+height0*n,width0+1,height0+1,corner,ALIGN_CENTER,TRUE,"0.00",ztsz1,ztclr1,bgclr1,bdclr2);
+      EditCreate(OBJPREFIX+"30DAYJC2",x+width0*2,y+height0*n,width0,height0+1,corner,ALIGN_CENTER,TRUE,"0.00",ztsz1,ztclr1,bgclr1,bdclr2);
+      n++;
+      EditCreate(OBJPREFIX+"90DAYJC0",x,y+height0*n,width0+1,height0+1,corner,ALIGN_RIGHT,TRUE,"90-Day ",ztsz1,ztclr1,bgclr1,bdclr2);
+      EditCreate(OBJPREFIX+"90DAYJC1",x+width0,y+height0*n,width0+1,height0+1,corner,ALIGN_CENTER,TRUE,"0.00",ztsz1,ztclr1,bgclr1,bdclr2);
+      EditCreate(OBJPREFIX+"90DAYJC2",x+width0*2,y+height0*n,width0,height0+1,corner,ALIGN_CENTER,TRUE,"0.00",ztsz1,ztclr1,bgclr1,bdclr2);
+      n++;
+      EditCreate(OBJPREFIX+"180DAYJC0",x,y+height0*n,width0+1,height0+1,corner,ALIGN_RIGHT,TRUE,"180-Day ",ztsz1,ztclr1,bgclr1,bdclr2);
+      EditCreate(OBJPREFIX+"180DAYJC1",x+width0,y+height0*n,width0+1,height0+1,corner,ALIGN_CENTER,TRUE,"0.00",ztsz1,ztclr1,bgclr1,bdclr2);
+      EditCreate(OBJPREFIX+"180DAYJC2",x+width0*2,y+height0*n,width0,height0+1,corner,ALIGN_CENTER,TRUE,"0.00",ztsz1,ztclr1,bgclr1,bdclr2);
+      n++;
+      EditCreate(OBJPREFIX+"365DAYJC0",x,y+height0*n,width0+1,height0,corner,ALIGN_RIGHT,TRUE,"365-Day ",ztsz1,ztclr1,bgclr1,bdclr2);
+      EditCreate(OBJPREFIX+"365DAYJC1",x+width0,y+height0*n,width0+1,height0,corner,ALIGN_CENTER,TRUE,"0.00",ztsz1,ztclr1,bgclr1,bdclr2);
+      EditCreate(OBJPREFIX+"365DAYJC2",x+width0*2,y+height0*n,width0,height0,corner,ALIGN_CENTER,TRUE,"0.00",ztsz1,ztclr1,bgclr1,bdclr2);
+     }
+  }
+//+------------------------------------------------------------------+
+//| symbol                                                           |
+//+------------------------------------------------------------------+
+bool symbolfind(string sym)
+  {
+   bool sfr=false;
+   for(int i=0; i<SymbolsTotal(false); i++)
+     {
+      if(sym==SymbolName(i,false))
+        {
+         sfr=true;
+         break;
+        }
+     }
+   return(sfr);
+  }
+//+------------------------------------------------------------------+
+//| RectLabelCreate                                                  |
+//+------------------------------------------------------------------+
+bool RectLblCreate(string name,int xdt,int ydt,int width,int height,ENUM_BASE_CORNER corner,color bgcolor,ENUM_BORDER_TYPE border,color bdcolor,ENUM_LINE_STYLE style,int lwidth)
+  {
+   ResetLastError();
+   if(ObjectFind(0,name)!=0)
+     {
+      if(!ObjectCreate(0,name,OBJ_RECTANGLE_LABEL,0,0,0))
+        {
+         return(false);
+        }
+     }
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,xdt);
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,ydt);
+   ObjectSetInteger(0,name,OBJPROP_XSIZE,width);
+   ObjectSetInteger(0,name,OBJPROP_YSIZE,height);
+   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,bgcolor);
+   ObjectSetInteger(0,name,OBJPROP_BORDER_TYPE,border);
+   ObjectSetInteger(0,name,OBJPROP_CORNER,corner);
+   ObjectSetInteger(0,name,OBJPROP_COLOR,bdcolor);
+   ObjectSetInteger(0,name,OBJPROP_STYLE,style);
+   ObjectSetInteger(0,name,OBJPROP_WIDTH,lwidth);
+   ObjectSetInteger(0,name,OBJPROP_BACK,false);
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,name,OBJPROP_SELECTED,false);
+   ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+   ObjectSetInteger(0,name,OBJPROP_ZORDER,0);
+   return(true);
+  }
+//+------------------------------------------------------------------+
+//| Create Edit                                                      |
+//+------------------------------------------------------------------+
+bool EditCreate(string name,int xdt,int ydt,int width,int height,ENUM_BASE_CORNER corner,ENUM_ALIGN_MODE align,bool read_only,string txt,int fsize,color fcolor,color bgcolor,color bdcolor)
+  {
+   ResetLastError();
+   if(!ObjectCreate(0,name,OBJ_EDIT,0,0,0))
+     {
+      return(false);
+     }
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,xdt);
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,ydt);
+   ObjectSetInteger(0,name,OBJPROP_XSIZE,width);
+   ObjectSetInteger(0,name,OBJPROP_YSIZE,height);
+   ObjectSetString(0,name,OBJPROP_TEXT,txt);
+   ObjectSetString(0,name,OBJPROP_FONT,"Microsoft YaHei UI");
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,fsize);
+   ObjectSetInteger(0,name,OBJPROP_ALIGN,align);
+   ObjectSetInteger(0,name,OBJPROP_READONLY,read_only);
+   ObjectSetInteger(0,name,OBJPROP_CORNER,corner);
+   ObjectSetInteger(0,name,OBJPROP_COLOR,fcolor);
+   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,bgcolor);
+   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,bdcolor);
+   ObjectSetInteger(0,name,OBJPROP_BACK,false);
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,name,OBJPROP_SELECTED,false);
+   ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+   ObjectSetInteger(0,name,OBJPROP_ZORDER,0);
+   return(true);
+  }
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
