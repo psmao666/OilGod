@@ -1,0 +1,130 @@
+#property copyright "PSMao"
+#property link      "www.github.com/psmao666"
+#property version   "1.00"
+#property strict
+#define MagicNumber 20001102
+
+input string USOIL="CL-OIL";       //WTI Symbol
+input string UKOIL="UKOUSDft";       //BRENT Symbol
+input double start_short_position = 0;
+input double start_long_position = 0;
+input double todayAverage = 0;
+input double startLots = 0.1;
+input double addLots = 0.1;
+input double goGap = 0.5;
+input double TakeProfitRatio = 0.05;
+input double StopLossRatio = 0.02;
+
+const int Long = 1;
+const int Short = -1;
+const int NO_TREND = 0;
+
+int direction = NO_TREND; 
+double current_lots = startLots;
+double LastGap = 0;
+
+void checkForClose()
+{
+    double Profit = AccountEquity() - AccountBalance();
+    if (Profit >= TakeProfitRatio * AccountBalance() || 
+         Profit <= -1 * StopLossRatio * AccountBalance())
+    {
+      for (int i = 0; i < OrdersTotal(); ++ i) // close all orders
+      {
+         if (!OrderSelect(i,SELECT_BY_POS)) break;
+         if (OrderMagicNumber() != MagicNumber || (OrderSymbol()!=USOIL && OrderSymbol()!=UKOIL)) continue;
+         
+         int modUK, modUS, finMode;
+         if (direction == Short) {modUK = MODE_BID; modUS = MODE_ASK;}
+         else {modUK = MODE_ASK; modUS = MODE_BID;}
+         if (OrderSymbol() == USOIL) finMode = modUS;
+         else finMode = modUK;
+          
+         if (!OrderClose(OrderTicket(),OrderLots(),MarketInfo(OrderSymbol(),finMode),20))
+            Print("Error on Closing");
+      }
+      direction = NO_TREND;
+      current_lots = startLots;
+      LastGap = 0;
+    }
+}
+
+void doShort()
+{
+    int tkt1, tkt2;
+    double priceDiff = NormalizeDouble(MarketInfo(UKOIL,MODE_BID)-MarketInfo(USOIL,MODE_BID),(int)MarketInfo(UKOIL,MODE_DIGITS));
+    
+    if (priceDiff - LastGap >= goGap) 
+    {
+      tkt1 = OrderSend(UKOIL,OP_SELL,current_lots,MarketInfo(UKOIL,MODE_BID),20,0,0,"short the spread",MagicNumber);
+      tkt2 = OrderSend(USOIL,OP_BUY,current_lots,MarketInfo(USOIL,MODE_ASK),20,0,0,"short the spread",MagicNumber);
+      current_lots += addLots;
+      LastGap = priceDiff;
+    }
+}
+
+void doLong()
+{
+    int tkt1, tkt2;
+    double priceDiff = NormalizeDouble(MarketInfo(UKOIL,MODE_BID)-MarketInfo(USOIL,MODE_BID),(int)MarketInfo(UKOIL,MODE_DIGITS));
+    
+    if (LastGap - priceDiff >= goGap) 
+    {
+      tkt1 = OrderSend(USOIL,OP_SELL,current_lots,MarketInfo(USOIL,MODE_BID),20,0,0,"long the spread",MagicNumber);
+      tkt2 = OrderSend(UKOIL,OP_BUY,current_lots,MarketInfo(UKOIL,MODE_ASK),20,0,0,"long the spread",MagicNumber);
+      current_lots += addLots;
+      LastGap = priceDiff;
+    }
+}
+
+void trytry()
+{
+
+    int tkt1, tkt2;
+    double priceDiff = NormalizeDouble(MarketInfo(UKOIL,MODE_BID)-MarketInfo(USOIL,MODE_BID),(int)MarketInfo(UKOIL,MODE_DIGITS));
+    
+    if (priceDiff >= start_short_position) 
+    {
+      direction = Short;
+      // short UKOIL, long USOIL
+      tkt1 = OrderSend(UKOIL,OP_SELL,current_lots,MarketInfo(UKOIL,MODE_BID),20,0,0,"short the spread",MagicNumber);
+      tkt2 = OrderSend(USOIL,OP_BUY,current_lots,MarketInfo(USOIL,MODE_ASK),20,0,0,"short the spread",MagicNumber);
+      current_lots += addLots;
+      LastGap = priceDiff;
+    }
+    else if (priceDiff <= start_long_position)
+    {
+      direction = Long;
+      // short USOIL, long UKOIL
+      tkt1 = OrderSend(USOIL,OP_SELL,current_lots,MarketInfo(USOIL,MODE_BID),20,0,0,"long the spread",MagicNumber);
+      tkt2 = OrderSend(UKOIL,OP_BUY,current_lots,MarketInfo(UKOIL,MODE_ASK),20,0,0,"long the spread",MagicNumber);
+      current_lots += addLots;
+      LastGap = priceDiff;
+    }
+}
+
+void checkForOpen()
+{
+    if (direction == Short) doShort();
+    else if (direction == Long) doLong(); 
+    else trytry();
+}
+
+void OnTick()
+{
+    if (Bars < 3 || IsTradeAllowed() == false) return;
+
+    int lastOrder = OrdersTotal();
+    double lastPrice = 0;
+
+    if (lastOrder != 0) // has open positions
+    {
+        if (!OrderSelect(lastOrder, SELECT_BY_POS)) return;
+        lastPrice = OrderOpenPrice();
+    }
+    else direction = NO_TREND; // always set
+
+    checkForClose();
+    checkForOpen();
+
+}

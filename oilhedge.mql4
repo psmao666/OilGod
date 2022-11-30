@@ -557,6 +557,7 @@ bool tradetime(int starttime,int endtime)
 //+------------------------------------------------------------------+
 int ordersend(string symbol,int type,double lots,double opprice,string zhushi)
   {
+    return;
    ResetLastError();
    double slprice=0,tpprice=0;
    int    tkt=-1;
@@ -620,6 +621,7 @@ int orderstotal2(string symbol,string zshi)
 //+------------------------------------------------------------------+
 void orderclose()
   {
+    return;
    ResetLastError();
    for(int i=OrdersTotal()-1; i>=0; i--)
      {
