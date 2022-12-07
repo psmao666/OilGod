@@ -2,7 +2,7 @@
 #property link      "www.github.com/psmao666"
 #property version   "1.00"
 #property strict
-#define MagicNumber 20001102
+#define MagicNumber 2000110266
 
 input string USOIL="CL-OIL";       //WTI Symbol
 input string UKOIL="UKOUSDft";       //BRENT Symbol
@@ -12,8 +12,8 @@ input double todayAverage = 0;
 input double startLots = 0.1;
 input double addLots = 0.1;
 input double goGap = 0.5;
-input double TakeProfitRatio = 0.05;
-input double StopLossRatio = 0.02;
+input double TakeProfitRatio = 0.03;
+input double StopLossRatio = 0.3;
 
 const int Long = 1;
 const int Short = -1;
@@ -29,7 +29,7 @@ void checkForClose()
     if (Profit >= TakeProfitRatio * AccountBalance() || 
          Profit <= -1 * StopLossRatio * AccountBalance())
     {
-      for (int i = 0; i < OrdersTotal(); ++ i) // close all orders
+      for (int i = OrdersTotal() - 1; i >= 0; -- i) // close all orders
       {
          if (!OrderSelect(i,SELECT_BY_POS)) break;
          if (OrderMagicNumber() != MagicNumber || (OrderSymbol()!=USOIL && OrderSymbol()!=UKOIL)) continue;
@@ -116,13 +116,18 @@ void OnTick()
 
     int lastOrder = OrdersTotal();
     double lastPrice = 0;
+    bool hasOpenOrder = false;
 
-    if (lastOrder != 0) // has open positions
+    for (int i = OrdersTotal()-1; i >= 0; -- i)
     {
-        if (!OrderSelect(lastOrder, SELECT_BY_POS)) return;
+        if (!OrderSelect(i, SELECT_BY_POS)) return;
+        if (OrderMagicNumber() == MagicNumber) {hasOpenOrder = true; break;}
+    }
+    if (hasOpenOrder) // has open positions
+    {
         lastPrice = OrderOpenPrice();
     }
-    else direction = NO_TREND; // always set
+    else {direction = NO_TREND; current_lots = startLots;} // always set
 
     checkForClose();
     checkForOpen();
