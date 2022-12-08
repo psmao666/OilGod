@@ -60,7 +60,7 @@ void checkForCloseLong()
          Profit <= -1 * StopLossRatio * AccountBalance())
     {
     
-      Print("Profit = ", Profit, " current cutloss target is ", -1 * StopLossRatio * AccountBalance());
+      Print("Profit = ", Profit, " current cutloss target is ", -1 * StopLossRatio * AccountBalance(), " Take Profit targe is ", TakeProfitRatio * AccountBalance());
       for (int i = OrdersTotal() - 1; i >= 0; -- i) // close all orders
       {
          if (!OrderSelect(i,SELECT_BY_POS)) break;
@@ -94,7 +94,7 @@ void checkForCloseShort()
          Profit <= -1 * StopLossRatio * AccountBalance())
     {
     
-      Print("Profit = ", Profit, " current cutloss target is ", -1 * StopLossRatio * AccountBalance());
+      Print("Profit = ", Profit, " current cutloss target is ", -1 * StopLossRatio * AccountBalance(), " Take Profit targe is ", TakeProfitRatio * AccountBalance());
       for (int i = OrdersTotal() - 1; i >= 0; -- i) // close all orders
       {
          if (!OrderSelect(i,SELECT_BY_POS)) break;
@@ -154,6 +154,7 @@ void tryshort()
       tkt1 = OrderSend(UKOIL,OP_SELL,current_short_lots,MarketInfo(UKOIL,MODE_BID),20,0,0,"short the spread",MagicNumberShort);
       tkt2 = OrderSend(USOIL,OP_BUY,current_short_lots,MarketInfo(USOIL,MODE_ASK),20,0,0,"short the spread",MagicNumberShort);
       current_short_lots += addLots;
+      LastShortGap = priceDiff;
     }
 }
 void trylong()
@@ -168,6 +169,7 @@ void trylong()
       tkt1 = OrderSend(USOIL,OP_SELL,current_long_lots,MarketInfo(USOIL,MODE_BID),20,0,0,"long the spread",MagicNumberLong);
       tkt2 = OrderSend(UKOIL,OP_BUY,current_long_lots,MarketInfo(UKOIL,MODE_ASK),20,0,0,"long the spread",MagicNumberLong);
       current_long_lots += addLots;
+      LastLongGap = priceDiff;
     }
 }
 
