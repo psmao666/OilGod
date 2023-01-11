@@ -3,11 +3,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from bokeh.plotting import figure, output_file, show
 
-usoil = pd.read_csv('CL-OIL1440.csv')
-ukoil = pd.read_csv('UKOUSDft1440.csv')
+usoil = pd.read_csv('NZDUSD1440.csv')
+ukoil = pd.read_csv('AUDUSD1440.csv')
 
-usoil.columns = ["date", "price", "open", "high", "low", "volume", "change"]
-ukoil.columns = ["date", "price", "open", "high", "low", "volume", "change"]
+usoil.columns = ["date", "time", "price","high", "low", "close", "volume"]
+ukoil.columns = ["date", "time", "price" ,"high", "low", "close", "volume"]
 
 count = {}
 usprice = {}
@@ -73,4 +73,3 @@ plt.ylabel('Price Diff')
 
 plt.show()
 ##show(p)
-
